@@ -52,11 +52,18 @@ body {
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 56px;
-  height: 56px;
+  width: 72px;
+  height: 72px;
   border-radius: 18px;
   background: rgba(39, 87, 210, 0.12);
   color: var(--primary);
+}
+
+.brand-mark img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
 }
 
 .brand-copy h1 {
