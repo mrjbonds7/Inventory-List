@@ -10,8 +10,15 @@
   <div class="page-shell">
     <section class="card">
       <header class="header">
-        <h1>Inventory List</h1>
-        <p>Add products, track quantities, delete items, and generate restock reports.</p>
+        <div class="brand">
+          <div class="brand-mark">
+            <img src="assets/mr%20j%20bond%20logo.png" alt="Inventory List logo" width="40" height="40">
+          </div>
+          <div class="brand-copy">
+            <h1>Inventory List</h1>
+            <p class="brand-tagline">Add products, track quantities, delete items, and generate restock reports.</p>
+          </div>
+        </div>
       </header>
 
       <div class="content">
@@ -58,7 +65,7 @@
             <button id="toggle-scanner" class="secondary" type="button">Open scanner</button>
           </div>
           <div id="scanner-container" class="scanner-container" style="display: none;">
-            <video id="scanner-video" playsinline></video>
+            <div id="scanner-video"></div>
             <div class="scanner-overlay"></div>
             <p class="scanner-hint">Point your camera at a barcode or QR-code</p>
           </div>
@@ -83,7 +90,7 @@
           </div>
           <div class="stat-card">
             <strong id="summary-low">0</strong>
-            Low stock items
+            Low / near-low items
           </div>
         </div>
 

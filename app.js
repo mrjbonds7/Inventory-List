@@ -64,30 +64,52 @@ function formatNumber(value) {
   return Number.isFinite(value) ? value.toLocaleString() : value;
 }
 
+const LOW_STOCK_WARNING_MARGIN = 2;
+
+function isLowStock(item) {
+  return item.quantity <= item.threshold;
+}
+
+function isLowStockWarning(item) {
+  return item.quantity > item.threshold && item.quantity <= item.threshold + LOW_STOCK_WARNING_MARGIN;
+}
+
 function getLowStockItems() {
-  return inventory.filter(item => item.quantity <= item.threshold);
+  return inventory.filter(isLowStock);
 }
 
 function getHighStockItems() {
   return inventory.filter(item => item.quantity > item.threshold);
 }
 
+function getWarningStockItems() {
+  return inventory.filter(isLowStockWarning);
+}
+
 function updateSummary() {
   summaryTotal.textContent = inventory.length;
-  summaryLow.textContent = getLowStockItems().length;
+  summaryLow.textContent = getLowStockItems().length + getWarningStockItems().length;
 }
 
 function createInventoryRow(item) {
   const row = document.createElement('tr');
-  if (item.quantity <= item.threshold) {
+  if (isLowStock(item)) {
     row.classList.add('low');
+  } else if (isLowStockWarning(item)) {
+    row.classList.add('warning');
   }
+
+  const statusText = isLowStock(item)
+    ? '<strong>Low stock</strong>'
+    : isLowStockWarning(item)
+      ? '<strong>Running low</strong>'
+      : 'OK';
 
   row.innerHTML = `
     <td>${item.name}</td>
     <td>${formatNumber(item.quantity)}</td>
     <td>${formatNumber(item.threshold)}</td>
-    <td>${item.quantity <= item.threshold ? '<strong>Low stock</strong>' : 'OK'}</td>
+    <td>${statusText}</td>
     <td>
       <button type="button" class="receive-button" data-id="${item.id}">Receive</button>
       <button type="button" class="delete-button" data-id="${item.id}">Delete</button>
@@ -104,6 +126,7 @@ function renderInventory() {
   inStockBody.innerHTML = '';
 
   const lowStockItems = getLowStockItems();
+  const warningStockItems = getWarningStockItems();
   const highStockItems = getHighStockItems();
   let alertMessage = '';
 
@@ -123,8 +146,8 @@ function renderInventory() {
     highStockItems.forEach(item => inStockBody.appendChild(createInventoryRow(item)));
   }
 
-  if (lowStockItems.length > 0) {
-    alertMessage = `Warning: ${lowStockItems.length} item(s) are low in stock. Check the low stock list and restock soon.`;
+  if (lowStockItems.length > 0 || warningStockItems.length > 0) {
+    alertMessage = `Warning: ${lowStockItems.length} low stock item(s) and ${warningStockItems.length} running low item(s). Please restock soon.`;
     alertBox.classList.add('show');
   } else {
     alertBox.classList.remove('show');

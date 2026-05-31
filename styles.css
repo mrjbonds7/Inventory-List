@@ -42,13 +42,30 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-.header h1 {
-  margin: 0 0 8px;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: rgba(39, 87, 210, 0.12);
+  color: var(--primary);
+}
+
+.brand-copy h1 {
+  margin: 0;
   font-size: clamp(1.8rem, 2.5vw, 2.7rem);
 }
 
-.header p {
-  margin: 0;
+.brand-copy p {
+  margin: 6px 0 0;
   color: var(--muted);
   line-height: 1.6;
 }
@@ -370,7 +387,12 @@ body {
   background: #fff4e6;
 }
 
-.inventory-table tbody tr.low td {
+.inventory-table tbody tr.warning {
+  background: #fff8df;
+}
+
+.inventory-table tbody tr.low td,
+.inventory-table tbody tr.warning td {
   color: #b35c00;
 }
 
