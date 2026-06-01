@@ -1,4 +1,24 @@
-<!DOCTYPE html>
+Now that I’ve actually jumped onto the live page and looked at the exact layout, I can see how clean and functional the setup is. The clean branding, the stat blocks right at the center, and the utility buttons sitting at the bottom make it incredibly intuitive.
+Seeing the exact implementation of the **"Receive stock"** workflow alongside the **"Add item"** form gives a much clearer picture of how this is built to handle day-to-day warehouse or retail operations.
+Since you asked what you can add, here is a developer-to-developer list of UX and functional upgrades that will take this from a great utility to a highly polished, production-grade tool:
+### 1. UX Upgrades for Data Integrity
+ * **Datalist / Autocomplete for "Receive stock":** Right now, the "Existing item name" input requires the user to type the name manually. If they typo "Coca Cola" instead of "Coca-Cola", it breaks the link. Adding a simple HTML5 <datalist> linked dynamically to your existing items array will give them a clean, searchable dropdown.
+  * **Contextual Scanned Action:** When someone uses the Barcode/QR scanner, instead of making them click a separate "Add/Receive" button, you could run a quick look-up function:
+     * *If the barcode exists:* Automatically increment the stock or populate the "Receive stock" form.
+        * *If the barcode is new:* Auto-fill the barcode field in the "Add item" form and shift focus there.
+        ### 2. Table & Navigation Enhancements
+         * **Global Filter/Search Bar:** Once there are 50+ items split between the *Low stock* and *In-stock* tables, finding a specific item visually gets tough. A single, reactive search bar at the top that filters both tables simultaneously by item name or barcode would be a massive win.
+          * **Visual Warning Badges:** In the status column, instead of plain text, use color-coded badges. For example:
+             * Out of stock (0 items) \rightarrow Flat Red
+                * Low stock (\le threshold) \rightarrow Orange/Yellow
+                   * Healthy \rightarrow Green
+                   ### 3. Data & Storage Safety
+                    * **Local Storage Safeguard (IndexedDB):** Browser localStorage is incredibly convenient, but it maxes out at around 5MB and can occasionally be wiped by aggressive browser cleaning scripts. Consider dropping in a lightweight wrapper like **localForage** to utilize **IndexedDB**. It allows for virtually unlimited storage and is much more stable for long-term business data.
+                     * **Auto-Backup Reminder:** Since it relies on local storage, you could add a small alert banner or a timestamp next to the "Export data" button showing when they last backed up (e.g., *"Last exported: 3 days ago"*), prompting them to click it weekly.
+                     ### 4. Minor UI Tweak
+                      * **Unified Actions Sticky Bar:** The bottom action buttons (PDF, WhatsApp, Export, Import) are super important. Making that footer container sticky at the bottom of the viewport on mobile devices ensures that no matter how long the item tables grow, the user can always trigger a restock report instantly without scrolling all the way down.
+                      The core logic and structure are completely solid—it's just about layering on these small quality-of-life features to make data entry foolproof! What are you planning to tackle next on it?
+                      <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -47,7 +67,8 @@
           <div class="form-grid">
             <div class="input-group">
               <label for="receive-name">Existing item name</label>
-              <input id="receive-name" type="text" placeholder="e.g. Printer paper" required>
+              <input id="receive-name" type="text" placeholder="e.g. Printer paper" list="item-names-list" required>
+              <datalist id="item-names-list"></datalist>
             </div>
             <div class="input-group">
               <label for="receive-quantity">Quantity received</label>
@@ -92,6 +113,15 @@
             <strong id="summary-low">0</strong>
             Low / near-low items
           </div>
+        </div>
+
+        <div class="search-bar-container">
+          <input 
+            id="global-search" 
+            type="text" 
+            placeholder="🔍 Search items by name or barcode..." 
+            class="search-bar"
+          >
         </div>
 
         <div class="weekly-panel">
@@ -160,7 +190,10 @@
         <div class="footer-actions">
           <button id="generate-pdf" class="button" type="button">Generate restock PDF</button>
           <button id="send-whatsapp" class="secondary whatsapp-button" type="button"><span class="whatsapp-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M20.52 3.483A11.873 11.873 0 0012.051.25 11.914 11.914 0 003.354 4.03a11.79 11.79 0 00-1.523 12.375L.229 23.78l7.864-2.064a11.818 11.818 0 005.956 1.53h.006a11.915 11.915 0 008.483-3.5 11.857 11.857 0 003.536-8.486 11.88 11.88 0 00-3.088-7.3zm-8.475 17.573a9.735 9.735 0 01-4.945-1.338l-.356-.211-4.665 1.224 1.248-4.54-.234-.37a9.714 9.714 0 011.353-11.867 9.75 9.75 0 0114.352 0 9.716 9.716 0 01-6.403 16.102zm5.79-7.994c-.295-.147-1.748-.864-2.019-.964-.271-.1-.47-.147-.669.148-.198.295-.769.963-.943 1.16-.174.198-.348.223-.643.074-.295-.148-1.248-.46-2.377-1.462-.88-.783-1.474-1.753-1.648-2.048-.174-.295-.019-.455.13-.601.134-.134.295-.346.442-.519.148-.173.198-.298.297-.497.1-.198.05-.372-.025-.519-.074-.148-.669-1.611-.916-2.206-.242-.579-.487-.5-.668-.51l-.57-.01c-.198 0-.519.074-.79.372-.271.295-1.033 1.009-1.033 2.46 0 1.452 1.057 2.856 1.205 3.053.148.198 2.084 3.18 5.05 4.457.706.305 1.256.487 1.686.623.709.226 1.353.194 1.86.118.568-.086 1.748-.714 1.994-1.403.247-.69.247-1.283.173-1.403-.074-.12-.27-.198-.565-.345z"/></svg></span>Send restock via WhatsApp</button>
-          <button id="export-data" class="secondary" type="button">Export data</button>
+          <div class="export-section">
+            <button id="export-data" class="secondary" type="button">Export data</button>
+            <div id="backup-reminder" class="backup-reminder"></div>
+          </div>
           <button id="import-data" class="secondary" type="button">Import data</button>
         </div>
 
@@ -171,6 +204,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-o6xj9hrTiE0LeXolXG4qB6xP5v7xWPWZxQfAf8VHvy86OaDjJ7Pr9uON3ovGVn6y+NNW1nnQ0tOl3UhOk/Rb5Q==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js" integrity="sha512-r6rDA7W6ZeF/gaD8NQWqWAJSWGn8puoDEqqNNuYqQmJGaWSO7XPXDQyWewZxHoNE1cm9izmYMW1Bw8bKBIW7Jg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js" integrity="sha512-lAD77RPW0vfqnVdpv3EGzx37K3pDYFBWm6F8F6FTvVk9p5LmLfPXJVk9fWvzE3Fn6F3I4Ry3Q8x1f52YYe3BgA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="app.js"></script>
 </body>
 </html>

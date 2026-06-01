@@ -23,41 +23,130 @@ const barcodeQuantityInput = document.getElementById('barcode-quantity');
 const addFromBarcodeButton = document.getElementById('add-from-barcode');
 const exportDataButton = document.getElementById('export-data');
 const importDataButton = document.getElementById('import-data');
+const globalSearchInput = document.getElementById('global-search');
+const backupReminderDiv = document.getElementById('backup-reminder');
 
 const STORAGE_KEY = 'inventory-items-v1';
 const HISTORY_KEY = 'inventory-weekly-counts-v1';
 const DELETED_KEY = 'inventory-deleted-items-v1';
+const BACKUP_TIMESTAMP_KEY = 'inventory-last-backup-v1';
 let inventory = [];
 let weeklyCounts = [];
 let deletedItems = [];
 let scanner = null;
 let scannerActive = false;
+let filteredInventory = [];
+let currentSearchQuery = '';
 
-function loadInventory() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  inventory = saved ? JSON.parse(saved) : [];
+// LocalForage configuration for IndexedDB fallback
+if (window.localforage) {
+  localforage.config({
+    name: 'InventoryListDB',
+    version: 1.0,
+    storeName: 'inventory_store',
+    driver: [localforage.INDEXEDDB, localforage.WEBSQL, localforage.LOCALSTORAGE],
+  });
+}
+
+async function loadInventory() {
+  try {
+    if (window.localforage) {
+      const saved = await localforage.getItem(STORAGE_KEY);
+      inventory = saved ? JSON.parse(saved) : [];
+    } else {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      inventory = saved ? JSON.parse(saved) : [];
+    }
+  } catch (err) {
+    console.error('Error loading inventory:', err);
+    const saved = localStorage.getItem(STORAGE_KEY);
+    inventory = saved ? JSON.parse(saved) : [];
+  }
 }
 
 function loadWeeklyHistory() {
-  const saved = localStorage.getItem(HISTORY_KEY);
-  weeklyCounts = saved ? JSON.parse(saved) : [];
+  try {
+    if (window.localforage) {
+      localforage.getItem(HISTORY_KEY).then(saved => {
+        weeklyCounts = saved ? JSON.parse(saved) : [];
+      });
+    } else {
+      const saved = localStorage.getItem(HISTORY_KEY);
+      weeklyCounts = saved ? JSON.parse(saved) : [];
+    }
+  } catch (err) {
+    console.error('Error loading weekly history:', err);
+    const saved = localStorage.getItem(HISTORY_KEY);
+    weeklyCounts = saved ? JSON.parse(saved) : [];
+  }
 }
 
 function loadDeletedItems() {
-  const saved = localStorage.getItem(DELETED_KEY);
-  deletedItems = saved ? JSON.parse(saved) : [];
+  try {
+    if (window.localforage) {
+      localforage.getItem(DELETED_KEY).then(saved => {
+        deletedItems = saved ? JSON.parse(saved) : [];
+      });
+    } else {
+      const saved = localStorage.getItem(DELETED_KEY);
+      deletedItems = saved ? JSON.parse(saved) : [];
+    }
+  } catch (err) {
+    console.error('Error loading deleted items:', err);
+    const saved = localStorage.getItem(DELETED_KEY);
+    deletedItems = saved ? JSON.parse(saved) : [];
+  }
 }
 
 function saveInventory() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(inventory));
+  try {
+    const data = JSON.stringify(inventory);
+    if (window.localforage) {
+      localforage.setItem(STORAGE_KEY, data).catch(err => {
+        console.error('LocalForage save failed, using localStorage:', err);
+        localStorage.setItem(STORAGE_KEY, data);
+      });
+    } else {
+      localStorage.setItem(STORAGE_KEY, data);
+    }
+  } catch (err) {
+    console.error('Error saving inventory:', err);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(inventory));
+  }
 }
 
 function saveWeeklyHistory() {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(weeklyCounts));
+  try {
+    const data = JSON.stringify(weeklyCounts);
+    if (window.localforage) {
+      localforage.setItem(HISTORY_KEY, data).catch(err => {
+        console.error('LocalForage save failed, using localStorage:', err);
+        localStorage.setItem(HISTORY_KEY, data);
+      });
+    } else {
+      localStorage.setItem(HISTORY_KEY, data);
+    }
+  } catch (err) {
+    console.error('Error saving weekly history:', err);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(weeklyCounts));
+  }
 }
 
 function saveDeletedItems() {
-  localStorage.setItem(DELETED_KEY, JSON.stringify(deletedItems));
+  try {
+    const data = JSON.stringify(deletedItems);
+    if (window.localforage) {
+      localforage.setItem(DELETED_KEY, data).catch(err => {
+        console.error('LocalForage save failed, using localStorage:', err);
+        localStorage.setItem(DELETED_KEY, data);
+      });
+    } else {
+      localStorage.setItem(DELETED_KEY, data);
+    }
+  } catch (err) {
+    console.error('Error saving deleted items:', err);
+    localStorage.setItem(DELETED_KEY, JSON.stringify(deletedItems));
+  }
 }
 
 function formatNumber(value) {
@@ -91,6 +180,87 @@ function updateSummary() {
   summaryLow.textContent = getLowStockItems().length + getWarningStockItems().length;
 }
 
+function updateDatalist() {
+  const datalist = document.getElementById('item-names-list');
+  datalist.innerHTML = '';
+  inventory.forEach(item => {
+    const option = document.createElement('option');
+    option.value = item.name;
+    datalist.appendChild(option);
+  });
+}
+
+function getFilteredInventory() {
+  if (!currentSearchQuery.trim()) {
+    return inventory;
+  }
+  
+  const query = currentSearchQuery.toLowerCase();
+  return inventory.filter(item => 
+    item.name.toLowerCase().includes(query) || 
+    (item.barcode && item.barcode.toLowerCase().includes(query))
+  );
+}
+
+function applySearchFilter() {
+  const lowStockItems = getFilteredInventory().filter(isLowStock);
+  const warningStockItems = getFilteredInventory().filter(isLowStockWarning);
+  const highStockItems = getFilteredInventory().filter(item => item.quantity > item.threshold);
+
+  lowStockBody.innerHTML = '';
+  inStockBody.innerHTML = '';
+
+  if (lowStockItems.length === 0) {
+    const placeholder = document.createElement('tr');
+    placeholder.innerHTML = `<td colspan="5" style="padding: 24px; text-align: center; color: #6b7280;">No matching low stock items.</td>`;
+    lowStockBody.appendChild(placeholder);
+  } else {
+    lowStockItems.forEach(item => lowStockBody.appendChild(createInventoryRow(item)));
+  }
+
+  if (highStockItems.length === 0) {
+    const placeholder = document.createElement('tr');
+    placeholder.innerHTML = `<td colspan="5" style="padding: 24px; text-align: center; color: #6b7280;">No matching in-stock items.</td>`;
+    inStockBody.appendChild(placeholder);
+  } else {
+    highStockItems.forEach(item => inStockBody.appendChild(createInventoryRow(item)));
+  }
+}
+
+function formatTimeAgo(timestamp) {
+  if (!timestamp) return null;
+  const now = new Date();
+  const date = new Date(timestamp);
+  const diffMs = now - date;
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+  return `${Math.floor(diffDays / 30)} months ago`;
+}
+
+function updateBackupReminder() {
+  const lastBackup = localStorage.getItem(BACKUP_TIMESTAMP_KEY);
+  if (!backupReminderDiv) return;
+  
+  if (!lastBackup) {
+    backupReminderDiv.innerHTML = '<span class="backup-warning">⚠️ Never backed up</span>';
+    backupReminderDiv.style.display = 'block';
+  } else {
+    const timeAgo = formatTimeAgo(lastBackup);
+    const diffDays = Math.floor((new Date() - new Date(lastBackup)) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays >= 7) {
+      backupReminderDiv.innerHTML = `<span class="backup-warning">⏰ Last exported: ${timeAgo}</span>`;
+      backupReminderDiv.style.display = 'block';
+    } else {
+      backupReminderDiv.style.display = 'none';
+    }
+  }
+}
+
 function createInventoryRow(item) {
   const row = document.createElement('tr');
   if (isLowStock(item)) {
@@ -99,17 +269,22 @@ function createInventoryRow(item) {
     row.classList.add('warning');
   }
 
-  const statusText = isLowStock(item)
-    ? '<strong>Low stock</strong>'
-    : isLowStockWarning(item)
-      ? '<strong>Running low</strong>'
-      : 'OK';
+  let statusBadge = '';
+  if (item.quantity === 0) {
+    statusBadge = '<span class="status-badge status-out-of-stock">Out of stock</span>';
+  } else if (isLowStock(item)) {
+    statusBadge = '<span class="status-badge status-low-stock">Low stock</span>';
+  } else if (isLowStockWarning(item)) {
+    statusBadge = '<span class="status-badge status-warning">Running low</span>';
+  } else {
+    statusBadge = '<span class="status-badge status-healthy">Healthy</span>';
+  }
 
   row.innerHTML = `
     <td>${item.name}</td>
     <td>${formatNumber(item.quantity)}</td>
     <td>${formatNumber(item.threshold)}</td>
-    <td>${statusText}</td>
+    <td>${statusBadge}</td>
     <td>
       <button type="button" class="receive-button" data-id="${item.id}">Receive</button>
       <button type="button" class="delete-button" data-id="${item.id}">Delete</button>
@@ -122,29 +297,25 @@ function createInventoryRow(item) {
 }
 
 function renderInventory() {
-  lowStockBody.innerHTML = '';
-  inStockBody.innerHTML = '';
+  updateDatalist();
+  applySearchFilter();
+  updateBackupReminder();
 
-  const lowStockItems = getLowStockItems();
-  const warningStockItems = getWarningStockItems();
-  const highStockItems = getHighStockItems();
-  let alertMessage = '';
-
-  if (lowStockItems.length === 0) {
+  if (lowStockBody.innerHTML === '') {
     const placeholder = document.createElement('tr');
     placeholder.innerHTML = `<td colspan="5" style="padding: 24px; text-align: center; color: #6b7280;">No low stock items.</td>`;
     lowStockBody.appendChild(placeholder);
-  } else {
-    lowStockItems.forEach(item => lowStockBody.appendChild(createInventoryRow(item)));
   }
 
-  if (highStockItems.length === 0) {
+  if (inStockBody.innerHTML === '') {
     const placeholder = document.createElement('tr');
     placeholder.innerHTML = `<td colspan="5" style="padding: 24px; text-align: center; color: #6b7280;">No in-stock items yet.</td>`;
     inStockBody.appendChild(placeholder);
-  } else {
-    highStockItems.forEach(item => inStockBody.appendChild(createInventoryRow(item)));
   }
+
+  const lowStockItems = getLowStockItems();
+  const warningStockItems = getWarningStockItems();
+  let alertMessage = '';
 
   if (lowStockItems.length > 0 || warningStockItems.length > 0) {
     alertMessage = `Warning: ${lowStockItems.length} low stock item(s) and ${warningStockItems.length} running low item(s). Please restock soon.`;
@@ -454,30 +625,21 @@ function processBarcode(code) {
   let existingItem = inventory.find(item => item.barcode && item.barcode.toLowerCase() === trimmedCode.toLowerCase());
 
   if (existingItem) {
+    // Barcode exists: Automatically increment stock
     existingItem.quantity += 1;
     saveInventory();
     renderInventory();
-    window.alert(`Updated ${existingItem.name}: +1 unit`);
+    window.alert(`✓ Updated ${existingItem.name}: +1 unit (now ${existingItem.quantity} in stock)`);
     stopScanner();
+    manualBarcodeInput.value = '';
+    barcodeQuantityInput.value = '1';
   } else {
-    const newItemName = window.prompt('Item not found in inventory. Enter a name for this new item:', `Item ${trimmedCode}`);
-    if (newItemName) {
-      const threshold = window.prompt('Enter low stock threshold for this item:', '5');
-      const thresholdNum = Math.max(0, Number(threshold) || 5);
-      
-      inventory.push({
-        id: Date.now().toString(),
-        name: newItemName,
-        quantity: 1,
-        threshold: thresholdNum,
-        barcode: trimmedCode,
-      });
-
-      saveInventory();
-      renderInventory();
-      window.alert(`Added new item: ${newItemName}`);
-      stopScanner();
-    }
+    // Barcode is new: Auto-fill the "Add item" form and shift focus
+    stopScanner();
+    manualBarcodeInput.value = trimmedCode;
+    barcodeQuantityInput.value = '1';
+    manualBarcodeInput.focus();
+    window.alert('New barcode detected. The barcode field has been pre-filled. Choose "Add/Receive" to add it to inventory or enter a quantity to receive.');
   }
 }
 
@@ -538,6 +700,12 @@ manualBarcodeInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
     addFromManualBarcode();
   }
+});
+
+// Global search filter event listener
+globalSearchInput.addEventListener('input', (e) => {
+  currentSearchQuery = e.target.value;
+  applySearchFilter();
 });
 
 function toggleDeletedItems() {
@@ -620,7 +788,12 @@ function exportData() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-  window.alert('Inventory data exported successfully!');
+  
+  // Save backup timestamp
+  localStorage.setItem(BACKUP_TIMESTAMP_KEY, new Date().toISOString());
+  updateBackupReminder();
+  
+  window.alert('✓ Inventory data exported successfully!');
 }
 
 function importData() {
@@ -663,7 +836,21 @@ function importData() {
   input.click();
 }
 
-loadInventory();
-loadWeeklyHistory();
-renderInventory();
-renderWeeklyHistory();
+// Async initialization
+async function initializeApp() {
+  await loadInventory();
+  loadWeeklyHistory();
+  loadDeletedItems();
+  renderInventory();
+  renderWeeklyHistory();
+  renderDeletedItems();
+  updateBackupReminder();
+}
+
+// Start the app
+initializeApp().catch(err => {
+  console.error('Initialization error:', err);
+  // Fallback: still try to render with whatever data we have
+  renderInventory();
+  renderWeeklyHistory();
+});
